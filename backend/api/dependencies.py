@@ -15,7 +15,7 @@ from backend.core.exceptions import AuthenticationError, InvalidTokenError
 from backend.core.config import settings
 from backend.core import local_auth
 from backend.database.session import get_session
-from backend.database.supabase_client import get_supabase_client
+from backend.database.supabase_client import get_supabase_client, create_fresh_supabase_client
 from backend.core.logging import set_correlation_id, get_logger
 
 logger = get_logger(__name__)
@@ -32,7 +32,11 @@ def verify_supabase_token(token: str) -> dict:
         return {"sub": payload["sub"], "email": payload["email"], "user": None}
 
     try:
-        result = get_supabase_client().auth.get_user(token)
+        # A fresh, uncached client - never the shared admin singleton, since
+        # .auth.get_user() sets the calling client's session, which would
+        # otherwise downgrade the admin client's DB access (used by every
+        # other concurrent request) to this user's restricted RLS permissions.
+        result = create_fresh_supabase_client().auth.get_user(token)
     except Exception as exc:
         logger.warning("Supabase token verification failed: %s", exc)
         raise InvalidTokenError(message="Invalid or expired token") from exc

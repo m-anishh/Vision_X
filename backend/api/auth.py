@@ -60,12 +60,29 @@ class AuthResponse(BaseModel):
 
 
 def get_supabase_client():
-    """Get Supabase client (lazy import to avoid circular dependencies)."""
+    """Get the shared admin Supabase client (lazy import to avoid circular dependencies).
+
+    Only for plain table reads/writes as service role - never for anything
+    under .auth.* that establishes a session (sign_in/sign_up/sign_out/
+    refresh_session), since that would silently downgrade this shared
+    client's DB access for every other concurrent request. Use
+    get_fresh_supabase_client() for those instead.
+    """
     try:
         from backend.database.supabase_client import get_supabase_client as _get_client
         return _get_client()
     except Exception as e:
         logger.error(f"Failed to get Supabase client: {e}")
+        raise HTTPException(status_code=500, detail="Authentication service unavailable")
+
+
+def get_fresh_supabase_client():
+    """Get a brand-new, uncached Supabase client - safe to call .auth.* session methods on."""
+    try:
+        from backend.database.supabase_client import create_fresh_supabase_client
+        return create_fresh_supabase_client()
+    except Exception as e:
+        logger.error(f"Failed to create Supabase client: {e}")
         raise HTTPException(status_code=500, detail="Authentication service unavailable")
 
 
@@ -82,8 +99,8 @@ async def register(request: RegisterRequest):
         )
 
     try:
-        supabase = get_supabase_client()
-        
+        supabase = get_fresh_supabase_client()
+
         # Register user with Supabase Auth
         result = supabase.auth.sign_up({
             "email": request.email,
@@ -147,8 +164,8 @@ async def login(request: LoginRequest):
         )
 
     try:
-        supabase = get_supabase_client()
-        
+        supabase = get_fresh_supabase_client()
+
         # Login with Supabase Auth
         result = supabase.auth.sign_in_with_password({
             "email": request.email,
@@ -215,7 +232,7 @@ async def logout(request: Request):
         
         if token:
             try:
-                supabase = get_supabase_client()
+                supabase = get_fresh_supabase_client()
                 supabase.auth.sign_out()
             except Exception as e:
                 logger.warning(f"Supabase logout failed (non-critical): {e}")
@@ -266,8 +283,9 @@ async def get_current_user_info(request: Request):
             anon_client = create_client(supabase_url, supabase_anon_key)
             result = anon_client.auth.get_user(token)
         else:
-            # Fallback: use service role client
-            supabase = get_supabase_client()
+            # Fallback: fresh client, never the shared admin singleton (see
+            # get_fresh_supabase_client docstring for why)
+            supabase = get_fresh_supabase_client()
             result = supabase.auth.get_user(token)
         
         if result.user is None:
@@ -389,8 +407,8 @@ async def update_profile(request: Request, data: UpdateProfileRequest):
 async def reset_password(request: ResetPasswordRequest):
     """Request password reset email."""
     try:
-        supabase = get_supabase_client()
-        
+        supabase = get_fresh_supabase_client()
+
         # Send password reset email via Supabase
         supabase.auth.reset_password_for_email(request.email)
         
@@ -422,7 +440,7 @@ async def refresh_token(request: Request):
             session = local_auth.refresh_tokens(refresh_token)
             return {"success": True, "session": session}
 
-        supabase = get_supabase_client()
+        supabase = get_fresh_supabase_client()
 
         # Refresh session
         result = supabase.auth.refresh_session(refresh_token)

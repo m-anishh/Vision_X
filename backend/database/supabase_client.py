@@ -47,3 +47,24 @@ def reset_client():
     """Reset the client instance (useful for testing)."""
     global _supabase_client
     _supabase_client = None
+
+
+def create_fresh_supabase_client() -> Client:
+    """
+    Create a brand-new, uncached Supabase client with the service role key.
+
+    Use this (never the shared get_supabase_client() singleton) for any call
+    that establishes a user session on the client - sign_in_with_password,
+    sign_up, sign_out, refresh_session. Those calls mutate the client's
+    internal auth session, and since postgrest requests on that client then
+    use the session's token instead of the service role key, doing this on
+    the shared singleton silently downgrades every other admin DB write
+    (from any concurrent request) to that user's restricted RLS permissions.
+    """
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise RuntimeError("Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
+
+    return create_client(supabase_url, supabase_key)
