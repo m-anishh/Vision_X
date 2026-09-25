@@ -13,6 +13,10 @@ from typing import Optional, List, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator, SecretStr
 
+# backend/core/config.py -> backend/ - resolve .env by absolute path so it
+# loads correctly regardless of the process's working directory when started.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+
 
 class Settings(BaseSettings):
     """
@@ -21,7 +25,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -33,7 +37,7 @@ class Settings(BaseSettings):
     APP_DESCRIPTION: str = "AI-powered Digital Forensics Platform"
     DEBUG: bool = False
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
-    SECRET_KEY: str = Field(default="change-me-in-production", min_length=32)
+    SECRET_KEY: str = Field(default="change-me-in-production-min-32-chars", min_length=32)
     API_PREFIX: str = "/api/v4"
     CORS_ORIGINS: str = "*"
 
@@ -77,6 +81,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-1.5-flash"
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_BASE_URL: Optional[str] = None
     CLAUDE_API_KEY: Optional[str] = None
     CLAUDE_MODEL: str = "claude-3-haiku-20240307"
     NEMOTRON_API_KEY: Optional[str] = None
@@ -198,7 +203,7 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY", "JWT_SECRET_KEY")
     @classmethod
     def validate_secret_keys(cls, v: str) -> str:
-        if v == "change-me-in-production" or v == "change-me-jwt-secret":
+        if v == "change-me-in-production-min-32-chars" or v == "change-me-in-production-jwt-secret-key-min-32-chars":
             import warnings
             warnings.warn(
                 "Using default secret key. Set a secure value in production.",

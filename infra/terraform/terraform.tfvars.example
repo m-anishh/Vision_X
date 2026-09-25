@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored) and fill in, or pass as TF_VAR_* env vars in CI.
+
+secret_key     = "generate-with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+jwt_secret_key = "generate-with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+
+# Leave these three empty until Supabase is set up - backend falls back to
+# local dev-auth automatically when SUPABASE_URL is blank.
+supabase_url              = ""
+supabase_service_role_key = ""
+supabase_anon_key         = ""
+
+gemini_api_key = ""

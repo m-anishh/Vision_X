@@ -1,0 +1,106 @@
+name: Deploy to AWS
+
+# Manual trigger only - this provisions/updates billed AWS resources
+# (ECS Fargate, ALB, NAT gateway). Flip to `push: branches: [main]` once
+# you're ready for auto-deploy on every merge.
+on:
+  workflow_dispatch: {}
+
+env:
+  AWS_REGION: eu-north-1
+  TF_DIR: infra/terraform
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+    outputs:
+      alb_dns: ${{ steps.tf_outputs.outputs.alb_dns }}
+      ecr_backend: ${{ steps.tf_outputs.outputs.ecr_backend }}
+      ecr_frontend: ${{ steps.tf_outputs.outputs.ecr_frontend }}
+      ecs_cluster: ${{ steps.tf_outputs.outputs.ecs_cluster }}
+      ecs_backend_service: ${{ steps.tf_outputs.outputs.ecs_backend_service }}
+      ecs_frontend_service: ${{ steps.tf_outputs.outputs.ecs_frontend_service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VAR_secret_key: ${{ secrets.APP_SECRET_KEY }}
+          TF_VAR_jwt_secret_key: ${{ secrets.APP_JWT_SECRET_KEY }}
+          TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
+          TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
+          TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+        run: terraform apply -auto-approve
+
+      - name: Read terraform outputs
+        id: tf_outputs
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "alb_dns=$(terraform output -raw alb_dns_name)" >> "$GITHUB_OUTPUT"
+          echo "ecr_backend=$(terraform output -raw ecr_backend_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "ecr_frontend=$(terraform output -raw ecr_frontend_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "ecs_cluster=$(terraform output -raw ecs_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "ecs_backend_service=$(terraform output -raw ecs_backend_service_name)" >> "$GITHUB_OUTPUT"
+          echo "ecs_frontend_service=$(terraform output -raw ecs_frontend_service_name)" >> "$GITHUB_OUTPUT"
+
+  build-and-deploy:
+    needs: terraform-apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr-login
+
+      - name: Build and push backend image
+        run: |
+          docker build -f backend/Dockerfile -t ${{ needs.terraform-apply.outputs.ecr_backend }}:${{ github.sha }} \
+            -t ${{ needs.terraform-apply.outputs.ecr_backend }}:latest .
+          docker push ${{ needs.terraform-apply.outputs.ecr_backend }}:${{ github.sha }}
+          docker push ${{ needs.terraform-apply.outputs.ecr_backend }}:latest
+
+      - name: Build and push frontend image
+        run: |
+          docker build -f frontend/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_URL=http://${{ needs.terraform-apply.outputs.alb_dns }} \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
+            -t ${{ needs.terraform-apply.outputs.ecr_frontend }}:${{ github.sha }} \
+            -t ${{ needs.terraform-apply.outputs.ecr_frontend }}:latest .
+          docker push ${{ needs.terraform-apply.outputs.ecr_frontend }}:${{ github.sha }}
+          docker push ${{ needs.terraform-apply.outputs.ecr_frontend }}:latest
+
+      - name: Force new ECS deployments
+        run: |
+          aws ecs update-service --cluster ${{ needs.terraform-apply.outputs.ecs_cluster }} \
+            --service ${{ needs.terraform-apply.outputs.ecs_backend_service }} --force-new-deployment
+          aws ecs update-service --cluster ${{ needs.terraform-apply.outputs.ecs_cluster }} \
+            --service ${{ needs.terraform-apply.outputs.ecs_frontend_service }} --force-new-deployment
+
+      - name: App URL
+        run: echo "Deployed: http://${{ needs.terraform-apply.outputs.alb_dns }}"

@@ -1,5 +1,5 @@
 ﻿backend/.venv/
-backend/.venv312/
+backend/venv312/
 __pycache__/
 *.pyc
 .env
@@ -9,9 +9,20 @@ node_modules/
 *.log
 .vscode/
 .idea/
+frontend/.next/
 
 uploads/
 
 reports/
 
-reports/
+backend/data/
+
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/terraform.tfvars
+
+.agents/
+.claude/
+agent/
+skills-lock.json

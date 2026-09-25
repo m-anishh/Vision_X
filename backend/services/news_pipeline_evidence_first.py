@@ -33,10 +33,21 @@ class NewsPipelineEvidenceFirst:
         self.client = get_supabase_client()
         self.start_time: float = 0.0
         
-        # NVIDIA Nemotron configuration
-        self.nemotron_api_key = settings.NEMOTRON_API_KEY or settings.GEMINI_API_KEY
-        self.nemotron_model = "nemotron-4-340b-instruct"  # or similar
-        self.nemotron_endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
+        # Reasoning LLM configuration - NVIDIA Nemotron if configured, else fall
+        # back to the OpenAI-compatible provider (payload format below already
+        # matches OpenAI's chat/completions shape).
+        if settings.NEMOTRON_API_KEY:
+            self.nemotron_api_key = settings.NEMOTRON_API_KEY
+            self.nemotron_model = settings.NEMOTRON_MODEL or "nemotron-4-340b-instruct"
+            self.nemotron_endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
+        elif settings.LLM_PROVIDER == "openai" and settings.OPENAI_API_KEY:
+            self.nemotron_api_key = settings.OPENAI_API_KEY
+            self.nemotron_model = settings.OPENAI_MODEL
+            self.nemotron_endpoint = f"{(settings.OPENAI_BASE_URL or 'https://api.openai.com/v1').rstrip('/')}/chat/completions"
+        else:
+            self.nemotron_api_key = None
+            self.nemotron_model = "nemotron-4-340b-instruct"
+            self.nemotron_endpoint = "https://integrate.api.nvidia.com/v1/chat/completions"
 
     async def run(self, input_type: str, input_content: str, title: str, source_url: Optional[str]) -> Dict[str, Any]:
         """Run evidence-first pipeline."""

@@ -9,6 +9,7 @@ import os
 import base64
 from typing import Any, Dict, List
 from backend.core.logging import get_logger
+from backend.core import llm_client
 from backend.services.agents.base_agent import BaseAgent
 
 logger = get_logger(__name__)
@@ -29,38 +30,7 @@ class VisionAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="vision_agent", timeout=60)
 
-    async def _run(self, image_path: str) -> Dict[str, Any]:
-        findings: List[str] = []
-        evidence: List[Dict[str, Any]] = []
-        reasoning = ""
-        manipulation_detected = False
-        ai_generated_probability = 0.0
-        confidence = 0.0
-
-        if not GEMINI_AVAILABLE:
-            findings.append("Gemini AI vision unavailable - google-generativeai not installed")
-            return {
-                "findings": findings,
-                "confidence": 0.0,
-                "reasoning": "Gemini API not available",
-                "manipulation_detected": False,
-                "ai_generated_probability": 0.0,
-                "evidence": [],
-                "summary": "AI vision analysis unavailable",
-            }
-
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            return self._fallback("GEMINI_API_KEY not configured")
-
-        try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-
-            with open(image_path, "rb") as f:
-                img_data = f.read()
-
-            prompt = """You are a digital forensics expert. Analyze this image and respond with a JSON object containing:
+    PROMPT = """You are a digital forensics expert. Analyze this image and respond with a JSON object containing:
 {
   "is_likely_manipulated": boolean,
   "ai_generated_probability": float 0-1,
@@ -70,12 +40,37 @@ class VisionAgent(BaseAgent):
   "artifacts_detected": ["list of manipulation artifacts found"]
 }
 
-Analyze for: pixel-level anomalies, compression artifacts, inconsistent lighting/shadows, 
+Analyze for: pixel-level anomalies, compression artifacts, inconsistent lighting/shadows,
 edge misalignment, cloning/splicing signs, AI generation patterns, metadata inconsistencies.
 If no manipulation is found, state that clearly."""
 
-            response = model.generate_content([prompt, img_data])
-            response_text = response.text.strip()
+    async def _run(self, image_path: str) -> Dict[str, Any]:
+        findings: List[str] = []
+        evidence: List[Dict[str, Any]] = []
+        reasoning = ""
+        manipulation_detected = False
+        ai_generated_probability = 0.0
+        confidence = 0.0
+
+        try:
+            if llm_client.is_openai_provider():
+                response_text = llm_client.vision_sync(self.PROMPT, image_path)
+                if not response_text:
+                    return self._fallback("OpenAI vision call failed")
+                provider_label = "OpenAI"
+            elif GEMINI_AVAILABLE and (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+                api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel("gemini-1.5-flash")
+
+                with open(image_path, "rb") as f:
+                    img_data = f.read()
+
+                response = model.generate_content([self.PROMPT, img_data])
+                response_text = response.text.strip()
+                provider_label = "Gemini"
+            else:
+                return self._fallback("No LLM provider configured (set OPENAI_API_KEY or GEMINI_API_KEY)")
 
             # Try to parse JSON from response
             import json as json_module
@@ -102,16 +97,16 @@ If no manipulation is found, state that clearly."""
 
             evidence.append({
                 "type": "vision_ai",
-                "key": "gemini_analysis",
+                "key": f"{provider_label.lower()}_analysis",
                 "value": reasoning[:500],
                 "confidence": confidence,
             })
 
-            summary = f"Gemini AI: manipulation={'yes' if manipulation_detected else 'no'}, AI-gen={ai_generated_probability:.0%}"
+            summary = f"{provider_label} AI: manipulation={'yes' if manipulation_detected else 'no'}, AI-gen={ai_generated_probability:.0%}"
 
         except Exception as e:
-            logger.error(f"Gemini API error: {e}")
-            return self._fallback(f"Gemini API error: {str(e)}")
+            logger.error(f"Vision LLM error: {e}")
+            return self._fallback(f"Vision LLM error: {str(e)}")
 
         return {
             "findings": findings,

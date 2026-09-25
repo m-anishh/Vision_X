@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { supabase } from "./supabase";
+import { supabase, isRealSupabaseConfigured } from "./supabase";
 import { apiClient } from "./api-client";
 import { unifiedApi } from "./unified-api";
 import type { User, Session } from "@supabase/supabase-js";
@@ -25,6 +25,58 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const LOCAL_SESSION_KEY = "visionx_local_session";
+
+// Builds a Supabase-shaped User/Session pair from our backend's auth response,
+// used when no real Supabase project is configured (local dev auth mode).
+function buildLocalSession(user: any, session: any): { user: User; session: Session } {
+  const fakeUser = {
+    id: user.id,
+    email: user.email,
+    app_metadata: {},
+    user_metadata: { full_name: user.full_name },
+    aud: "authenticated",
+    created_at: new Date().toISOString(),
+  } as unknown as User;
+
+  const fakeSession = {
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_at: session.expires_at,
+    token_type: "bearer",
+    user: fakeUser,
+  } as unknown as Session;
+
+  return { user: fakeUser, session: fakeSession };
+}
+
+function loadLocalSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_SESSION_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw) as Session;
+    if (session.expires_at && session.expires_at * 1000 < Date.now()) {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalSession(session: Session | null) {
+  try {
+    if (session) {
+      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(session));
+    } else {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+    }
+  } catch {
+    // ignore storage errors (private browsing, etc.)
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -43,6 +95,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isRealSupabaseConfigured) {
+      const session = loadLocalSession();
+      const user = (session?.user as User) ?? null;
+      setState({ user, session, loading: false });
+      syncToken(session);
+      return;
+    }
+
     let cancelled = false;
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -85,6 +145,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
+      if (!isRealSupabaseConfigured) {
+        const { user, session } = buildLocalSession(result.user, result.session);
+        saveLocalSession(session);
+        setState({ user, session, loading: false });
+        syncToken(session);
+        return { success: true };
+      }
+
       if (result.session?.access_token) {
         apiClient.setToken(result.session.access_token);
         unifiedApi.setToken(result.session.access_token);
@@ -114,25 +182,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // const signUp = async (email: string, password: string, fullName: string): Promise<AuthResult> => {
-  //   try {
-  //     const { data, error } = await supabase.auth.signUp({
-  //       email,
-  //       password,
-  //       options: { data: { full_name: fullName } },
-  //     });
-
-  //     if (error) {
-  //       return { success: false, error: error.message || "Registration failed" };
-  //     }
-
-  //     return { success: true };
-  //   } catch (err: any) {
-  //     console.error("SignUp error:", err);
-  //     return { success: false, error: err.message || "Registration failed" };
-  //   }
-  // };
-
   const signUp = async (
     email: string,
     password: string,
@@ -153,6 +202,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           success: false,
           error: result?.error?.message || result?.message || "Registration failed",
         };
+      }
+
+      if (!isRealSupabaseConfigured) {
+        const { user, session } = buildLocalSession(result.user, result.session);
+        saveLocalSession(session);
+        setState({ user, session, loading: false });
+        syncToken(session);
+        return { success: true };
       }
 
       // Best-effort: set the returned session in Supabase so getSession/onAuthStateChange see it
@@ -185,7 +242,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
   };
+
   const signOut = async () => {
+    if (!isRealSupabaseConfigured) {
+      saveLocalSession(null);
+      setState({ user: null, session: null, loading: false });
+      syncToken(null);
+      return;
+    }
     await supabase.auth.signOut();
   };
 

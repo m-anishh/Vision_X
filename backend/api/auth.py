@@ -12,13 +12,20 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from backend.core.config import settings
 from backend.core.logging import get_logger
 from backend.core.exceptions import ValidationError, AuthenticationError
 from backend.api.dependencies import verify_supabase_token
+from backend.core import local_auth
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _using_local_auth() -> bool:
+    """True when no real Supabase project is configured for this deployment."""
+    return not settings.SUPABASE_URL
 
 
 # Request/Response Models
@@ -65,6 +72,15 @@ def get_supabase_client():
 @router.post("/register", response_model=AuthResponse)
 async def register(request: RegisterRequest):
     """Register a new user with Supabase Auth."""
+    if _using_local_auth():
+        result = local_auth.register_user(request.email, request.password, request.full_name)
+        return AuthResponse(
+            success=True,
+            message="Registration successful (local dev auth - no Supabase configured).",
+            user=result["user"],
+            session=result["session"],
+        )
+
     try:
         supabase = get_supabase_client()
         
@@ -121,6 +137,15 @@ async def register(request: RegisterRequest):
 @router.post("/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
     """Login user with Supabase Auth."""
+    if _using_local_auth():
+        result = local_auth.login_user(request.email, request.password)
+        return AuthResponse(
+            success=True,
+            message="Login successful (local dev auth - no Supabase configured).",
+            user=result["user"],
+            session=result["session"],
+        )
+
     try:
         supabase = get_supabase_client()
         
@@ -216,9 +241,21 @@ async def get_current_user_info(request: Request):
         auth_header = request.headers.get("authorization", "")
         if not auth_header.startswith("Bearer "):
             raise AuthenticationError(message="Authentication required")
-        
+
         token = auth_header[7:]
-        
+
+        if _using_local_auth():
+            payload = local_auth.verify_token(token)
+            profile = local_auth.get_user_by_id(payload["sub"])
+            if profile is None:
+                raise AuthenticationError(message="Invalid or expired token")
+            return AuthResponse(
+                success=True,
+                message="User info retrieved",
+                user={"id": profile["id"], "email": profile["email"], "full_name": profile["full_name"]},
+                profile=profile,
+            )
+
         # Verify token with Supabase - use anon key client for user token verification
         import os
         from supabase import create_client
@@ -283,11 +320,20 @@ async def update_profile(request: Request, data: UpdateProfileRequest):
             raise AuthenticationError(message="Authentication required")
         
         token = auth_header[7:]
-        
+
+        if _using_local_auth():
+            local_payload = local_auth.verify_token(token)
+            profile = local_auth.update_profile(
+                local_payload["sub"],
+                full_name=data.full_name,
+                avatar_url=data.avatar_url,
+            )
+            return AuthResponse(success=True, message="Profile updated successfully", profile=profile)
+
         payload = verify_supabase_token(token)
         user_id = payload["sub"]
         user_email = payload.get("email", "")
-        
+
         # Update profile in Supabase profiles table
         supabase = get_supabase_client()
         
@@ -371,9 +417,13 @@ async def refresh_token(request: Request):
         
         if not refresh_token:
             raise ValidationError(message="Refresh token required")
-        
+
+        if _using_local_auth():
+            session = local_auth.refresh_tokens(refresh_token)
+            return {"success": True, "session": session}
+
         supabase = get_supabase_client()
-        
+
         # Refresh session
         result = supabase.auth.refresh_session(refresh_token)
         

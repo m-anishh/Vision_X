@@ -43,6 +43,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// True only when a real Supabase project is configured. When false, the
+// backend falls back to local dev auth and the frontend must not make any
+// network calls to Supabase (the placeholder URL doesn't resolve to anything
+// and calls to it will hang).
+export const isRealSupabaseConfigured = !supabaseUrl.includes("placeholder");
+
 console.log("Supabase URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
 console.log(
   "Supabase anon exists:",

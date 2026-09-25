@@ -15,7 +15,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
-export default function VideoUploadForm() {
+interface VideoUploadFormProps {
+  onComplete?: (data: any) => void;
+  onError?: (error: string) => void;
+}
+
+export default function VideoUploadForm({ onComplete, onError }: VideoUploadFormProps = {}) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
@@ -94,13 +99,15 @@ export default function VideoUploadForm() {
 
       const result = await response.json();
       console.log("Upload successful:", result);
-      
+      onComplete?.(result);
+
       // Redirect to analysis page
       setTimeout(() => {
         window.location.href = `/news/video/${result.analysis_id}`;
       }, 1000);
     } catch (error) {
       console.error("Upload error:", error);
+      onError?.(error instanceof Error ? error.message : "Video upload failed");
       setUploading(false);
       setProgress(0);
     }

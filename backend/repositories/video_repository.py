@@ -19,7 +19,13 @@ class VideoRepository:
     """Repository for video analysis data access."""
 
     def __init__(self):
-        self.client = get_supabase_client()
+        self._client = None
+
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = get_supabase_client()
+        return self._client
 
     async def create_analysis(self, user_id: UUID, input_type: str, input_content: str,
                              title: Optional[str] = None, source_url: Optional[str] = None,

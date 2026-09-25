@@ -12,6 +12,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.exceptions import AuthenticationError, InvalidTokenError
+from backend.core.config import settings
+from backend.core import local_auth
 from backend.database.session import get_session
 from backend.database.supabase_client import get_supabase_client
 from backend.core.logging import set_correlation_id, get_logger
@@ -24,6 +26,11 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def verify_supabase_token(token: str) -> dict:
     """Verify a Supabase access token and return the authenticated user data."""
+    if not settings.SUPABASE_URL:
+        # No Supabase project configured - fall back to local dev auth tokens.
+        payload = local_auth.verify_token(token)
+        return {"sub": payload["sub"], "email": payload["email"], "user": None}
+
     try:
         result = get_supabase_client().auth.get_user(token)
     except Exception as exc:

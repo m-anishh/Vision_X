@@ -64,11 +64,8 @@ class DocumentReasoningAgent:
     ) -> AgentResult:
         start = time.perf_counter()
         try:
-            from google import genai
-
-            api_key = os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                return self._fallback(analysis, structural, metadata, start)
+            from backend.core.config import settings
+            from backend.core import llm_client
 
             ocr_text = ocr_result.evidence.get("combined_text", "")
             if not ocr_text:
@@ -82,16 +79,29 @@ class DocumentReasoningAgent:
                 image_forensics=json.dumps(image_result.evidence, indent=2, default=str),
             )
 
-            client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-            )
-            reasoning_text = (
-                response.text
-                if hasattr(response, "text") and response.text
-                else "No response from Gemini"
-            )
+            model_label = "gemini-2.0-flash"
+            if llm_client.is_openai_provider():
+                reasoning_text = llm_client.chat_sync(prompt)
+                model_label = settings.OPENAI_MODEL
+                if not reasoning_text:
+                    return self._fallback(analysis, structural, metadata, start)
+            else:
+                from google import genai
+
+                api_key = os.getenv("GEMINI_API_KEY")
+                if not api_key:
+                    return self._fallback(analysis, structural, metadata, start)
+
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=prompt,
+                )
+                reasoning_text = (
+                    response.text
+                    if hasattr(response, "text") and response.text
+                    else "No response from Gemini"
+                )
 
             parsed = self._parse_json_response(reasoning_text)
             confidence_map = {"HIGH": 0.85, "MEDIUM": 0.55, "LOW": 0.25}
@@ -101,7 +111,7 @@ class DocumentReasoningAgent:
             evidence = {
                 "reasoning": reasoning_text,
                 "parsed": parsed,
-                "model": "gemini-2.0-flash",
+                "model": model_label,
                 "document_type": parsed.get("document_type", "unknown"),
                 "authenticity_confidence": auth_conf,
                 "consistency_issues": parsed.get("consistency_issues", []),

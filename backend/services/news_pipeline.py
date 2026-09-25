@@ -237,7 +237,11 @@ class NewsPipeline:
     # ==================== GEMINI AI HELPER ====================
 
     async def _call_gemini(self, prompt: str, system_prompt: Optional[str] = None, max_retries: int = 3) -> Optional[str]:
-        """Call Gemini API with retry logic."""
+        """Call the configured LLM (Gemini, or OpenAI-compatible fallback) with retry logic."""
+        if not self.gemini_api_key and settings.LLM_PROVIDER == "openai" and settings.OPENAI_API_KEY:
+            from backend.core import llm_client
+            return await llm_client.chat_async(prompt, system_prompt)
+
         if not self.gemini_api_key:
             logger.warning("[NewsPipeline] No Gemini API key configured, using fallback analysis")
             return None

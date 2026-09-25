@@ -16,6 +16,7 @@ from io import BytesIO
 
 from backend.core.logging import get_logger
 from backend.core.exceptions import AnalysisError, ValidationError
+from backend.core import llm_client
 from backend.database.supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
@@ -299,30 +300,8 @@ class ImageAnalysisService:
             "recommendations": [],
         }
 
-        model = self._get_gemini_model()
-        if not model:
-            result["explanation"] = "Gemini Vision API not available"
-            return result
-
-        try:
-            # Prepare image with proper MIME type
-            from PIL import Image as PILImage
-            import mimetypes
-            
-            # Determine MIME type
-            mime_type, _ = mimetypes.guess_type(image_path)
-            if not mime_type or not mime_type.startswith("image/"):
-                mime_type = "image/jpeg"  # Default fallback
-            
-            # Load and convert image
-            pil_img = PILImage.open(image_path)
-            
-            # Convert to RGB if necessary (Gemini requires RGB)
-            if pil_img.mode in ("RGBA", "LA", "P", "L"):
-                pil_img = pil_img.convert("RGB")
-            
-            # Build prompt
-            prompt = f"""You are a digital forensics expert. Analyze this image and respond with ONLY valid JSON:
+        # Build prompt
+        prompt = f"""You are a digital forensics expert. Analyze this image and respond with ONLY valid JSON:
 
 {{
   "authenticity_assessment": "authentic" | "possibly_edited" | "suspicious" | "likely_ai_generated" | "manipulated",
@@ -342,8 +321,31 @@ Context:
 
 Analyze for: pixel anomalies, compression artifacts, lighting inconsistencies, edge misalignment, cloning, AI patterns."""
 
-            response = model.generate_content([prompt, pil_img])
-            response_text = response.text.strip()
+        if llm_client.is_openai_provider():
+            response_text = llm_client.vision_sync(prompt, image_path)
+            if not response_text:
+                result["explanation"] = "OpenAI vision call failed"
+                return result
+        else:
+            model = self._get_gemini_model()
+            if not model:
+                result["explanation"] = "No LLM provider configured (set OPENAI_API_KEY or GEMINI_API_KEY)"
+                return result
+
+        try:
+            if not llm_client.is_openai_provider():
+                # Prepare image with proper MIME type
+                from PIL import Image as PILImage
+
+                # Load and convert image
+                pil_img = PILImage.open(image_path)
+
+                # Convert to RGB if necessary (Gemini requires RGB)
+                if pil_img.mode in ("RGBA", "LA", "P", "L"):
+                    pil_img = pil_img.convert("RGB")
+
+                response = model.generate_content([prompt, pil_img])
+                response_text = response.text.strip()
 
             # Parse JSON
             import json
