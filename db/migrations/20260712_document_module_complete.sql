@@ -114,60 +114,60 @@ ALTER TABLE public.document_agent_results ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own document analyses"
     ON public.document_analyses
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can insert own document analyses"
     ON public.document_analyses
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can update own document analyses"
     ON public.document_analyses
     FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can delete own document analyses"
     ON public.document_analyses
     FOR DELETE
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 -- RLS Policies for document_evidence
 CREATE POLICY "Users can view evidence of own document analyses"
     ON public.document_evidence
     FOR SELECT
-    USING (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_evidence.analysis_id AND document_analyses.user_id = auth.uid()));
+    USING (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_evidence.analysis_id AND document_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can insert evidence for own document analyses"
     ON public.document_evidence
     FOR INSERT
-    WITH CHECK (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_evidence.analysis_id AND document_analyses.user_id = auth.uid()));
+    WITH CHECK (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_evidence.analysis_id AND document_analyses.user_id = (select auth.uid())));
 
 -- RLS Policies for document_reports
 CREATE POLICY "Users can view reports of own document analyses"
     ON public.document_reports
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can insert reports for own document analyses"
     ON public.document_reports
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can update reports of own document analyses"
     ON public.document_reports
     FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 -- RLS Policies for document_agent_results
 CREATE POLICY "Users can view agent results of own document analyses"
     ON public.document_agent_results
     FOR SELECT
-    USING (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_agent_results.analysis_id AND document_analyses.user_id = auth.uid()));
+    USING (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_agent_results.analysis_id AND document_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can insert agent results for own document analyses"
     ON public.document_agent_results
     FOR INSERT
-    WITH CHECK (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_agent_results.analysis_id AND document_analyses.user_id = auth.uid()));
+    WITH CHECK (EXISTS (SELECT 1 FROM public.document_analyses WHERE document_analyses.id = document_agent_results.analysis_id AND document_analyses.user_id = (select auth.uid())));
 
 -- Grant permissions
 GRANT ALL ON public.document_analyses TO authenticated;

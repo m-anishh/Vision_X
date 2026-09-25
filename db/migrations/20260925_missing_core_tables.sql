@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own profile" ON public.profiles
-    FOR SELECT USING (auth.uid() = id);
+    FOR SELECT USING ((select auth.uid()) = id);
 CREATE POLICY "Users can update own profile" ON public.profiles
-    FOR UPDATE USING (auth.uid() = id);
+    FOR UPDATE USING ((select auth.uid()) = id);
 CREATE POLICY "Users can insert own profile" ON public.profiles
-    FOR INSERT WITH CHECK (auth.uid() = id);
+    FOR INSERT WITH CHECK ((select auth.uid()) = id);
 
 -- ============================================================
 -- analysis (image verification module - singular table name)
@@ -55,13 +55,13 @@ CREATE INDEX IF NOT EXISTS idx_analysis_user_id ON public.analysis(user_id);
 ALTER TABLE public.analysis ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own analysis" ON public.analysis
-    FOR SELECT USING (auth.uid() = user_id);
+    FOR SELECT USING ((select auth.uid()) = user_id);
 CREATE POLICY "Users can insert own analysis" ON public.analysis
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
+    FOR INSERT WITH CHECK ((select auth.uid()) = user_id);
 CREATE POLICY "Users can update own analysis" ON public.analysis
-    FOR UPDATE USING (auth.uid() = user_id);
+    FOR UPDATE USING ((select auth.uid()) = user_id);
 CREATE POLICY "Users can delete own analysis" ON public.analysis
-    FOR DELETE USING (auth.uid() = user_id);
+    FOR DELETE USING ((select auth.uid()) = user_id);
 
 -- ============================================================
 -- News Verification Module
@@ -162,19 +162,19 @@ ALTER TABLE public.news_evidence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.news_reports ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own news analyses" ON public.news_analyses
-    FOR SELECT USING (auth.uid() = user_id);
+    FOR SELECT USING ((select auth.uid()) = user_id);
 CREATE POLICY "Users can insert own news analyses" ON public.news_analyses
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
+    FOR INSERT WITH CHECK ((select auth.uid()) = user_id);
 CREATE POLICY "Users can update own news analyses" ON public.news_analyses
-    FOR UPDATE USING (auth.uid() = user_id);
+    FOR UPDATE USING ((select auth.uid()) = user_id);
 CREATE POLICY "Users can delete own news analyses" ON public.news_analyses
-    FOR DELETE USING (auth.uid() = user_id);
+    FOR DELETE USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can view agent results of own analyses" ON public.news_agent_results
-    FOR SELECT USING (EXISTS (SELECT 1 FROM public.news_analyses WHERE news_analyses.id = news_agent_results.analysis_id AND news_analyses.user_id = auth.uid()));
+    FOR SELECT USING (EXISTS (SELECT 1 FROM public.news_analyses WHERE news_analyses.id = news_agent_results.analysis_id AND news_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can view evidence of own analyses" ON public.news_evidence
-    FOR SELECT USING (EXISTS (SELECT 1 FROM public.news_analyses WHERE news_analyses.id = news_evidence.analysis_id AND news_analyses.user_id = auth.uid()));
+    FOR SELECT USING (EXISTS (SELECT 1 FROM public.news_analyses WHERE news_analyses.id = news_evidence.analysis_id AND news_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can view own news reports" ON public.news_reports
-    FOR SELECT USING (auth.uid() = user_id);
+    FOR SELECT USING ((select auth.uid()) = user_id);

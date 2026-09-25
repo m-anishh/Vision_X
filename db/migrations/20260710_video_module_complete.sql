@@ -202,82 +202,82 @@ ALTER TABLE public.video_agent_results ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own video analyses"
     ON public.video_analyses
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can insert own video analyses"
     ON public.video_analyses
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can update own video analyses"
     ON public.video_analyses
     FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can delete own video analyses"
     ON public.video_analyses
     FOR DELETE
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 -- RLS Policies for video_frames
 CREATE POLICY "Users can view frames of own analyses"
     ON public.video_frames
     FOR SELECT
-    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_frames.analysis_id AND video_analyses.user_id = auth.uid()));
+    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_frames.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can insert frames for own analyses"
     ON public.video_frames
     FOR INSERT
-    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_frames.analysis_id AND video_analyses.user_id = auth.uid()));
+    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_frames.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 -- RLS Policies for video_evidence
 CREATE POLICY "Users can view evidence of own analyses"
     ON public.video_evidence
     FOR SELECT
-    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_evidence.analysis_id AND video_analyses.user_id = auth.uid()));
+    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_evidence.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can insert evidence for own analyses"
     ON public.video_evidence
     FOR INSERT
-    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_evidence.analysis_id AND video_analyses.user_id = auth.uid()));
+    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_evidence.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 -- RLS Policies for video_audio
 CREATE POLICY "Users can view audio of own analyses"
     ON public.video_audio
     FOR SELECT
-    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_audio.analysis_id AND video_analyses.user_id = auth.uid()));
+    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_audio.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can insert audio for own analyses"
     ON public.video_audio
     FOR INSERT
-    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_audio.analysis_id AND video_analyses.user_id = auth.uid()));
+    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_audio.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 -- RLS Policies for video_reports
 CREATE POLICY "Users can view reports of own analyses"
     ON public.video_reports
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can insert reports for own analyses"
     ON public.video_reports
     FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK ((select auth.uid()) = user_id);
 
 CREATE POLICY "Users can update reports of own analyses"
     ON public.video_reports
     FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING ((select auth.uid()) = user_id);
 
 -- RLS Policies for video_agent_results
 CREATE POLICY "Users can view agent results of own analyses"
     ON public.video_agent_results
     FOR SELECT
-    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_agent_results.analysis_id AND video_analyses.user_id = auth.uid()));
+    USING (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_agent_results.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 CREATE POLICY "Users can insert agent results for own analyses"
     ON public.video_agent_results
     FOR INSERT
-    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_agent_results.analysis_id AND video_analyses.user_id = auth.uid()));
+    WITH CHECK (EXISTS (SELECT 1 FROM public.video_analyses WHERE video_analyses.id = video_agent_results.analysis_id AND video_analyses.user_id = (select auth.uid())));
 
 -- Grant permissions
 GRANT ALL ON public.video_analyses TO authenticated;
